@@ -1,13 +1,19 @@
 package com.fahim.whatsappstatus
 
-import android.content.ContentUris
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Environment
-import android.provider.MediaStore
+import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.*
@@ -20,29 +26,77 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.fahim.whatsappstatus.ui.theme.WhatsappStatusTheme
-import java.io.File
-import java.util.*
 import com.bumptech.glide.integration.compose.ExperimentalGlideComposeApi
 import com.bumptech.glide.integration.compose.GlideImage
+import com.fahim.whatsappstatus.ui.theme.WhatsappStatusTheme
+import com.karumi.dexter.Dexter
+import com.karumi.dexter.PermissionToken
+import com.karumi.dexter.listener.PermissionDeniedResponse
+import com.karumi.dexter.listener.PermissionGrantedResponse
+import com.karumi.dexter.listener.PermissionRequest
+import com.karumi.dexter.listener.single.PermissionListener
+import java.io.File
+import java.util.*
 
 
 class MainActivity : ComponentActivity() {
+    private fun hasStoragePermission() =
+        checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) ==
+                PackageManager.PERMISSION_GRANTED
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun hasAllFilesPermission() = Environment.isExternalStorageManager()
 
     private val TAG = MainActivity::class.java.name
     var statusFiles = emptyList<File>()
     override fun onCreate(savedInstanceState: Bundle?) {
+        val uri = Uri.parse("package:${BuildConfig.APPLICATION_ID}")
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (!hasAllFilesPermission())
+                startActivity(
+                    Intent(
+                        Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                        uri
+                    )
+                )
+        }
+        if (!hasStoragePermission()) {
+            Dexter.withContext(this)
+                .withPermission(Manifest.permission.READ_EXTERNAL_STORAGE)
+                .withListener(object : PermissionListener {
+                    override fun onPermissionGranted(response: PermissionGrantedResponse) { /* ... */
+                        statusFiles =
+                            getFilesList("/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/.Statuses")
+
+                    }
+
+                    override fun onPermissionDenied(response: PermissionDeniedResponse) { /* ... */
+                    }
+
+                    override fun onPermissionRationaleShouldBeShown(
+                        permission: PermissionRequest?,
+                        token: PermissionToken?
+                    ) { /* ... */
+                    }
+                }).check()
+        }
         super.onCreate(savedInstanceState)
-        /*val PATH =
+
+
+
+
+        val PATH =
             Environment.getExternalStorageDirectory().absolutePath +
                     File.separator + "Android" +
                     File.separator + "media" +
                     File.separator + "com.whatsapp" +
                     File.separator + "WhatsApp" +
                     File.separator + "Media" +
-                    File.separator + ".Statuses"*/
-        val PATH =
-            Environment.getExternalStorageDirectory().absolutePath + File.separator + "Download"
+                    File.separator + ".Statuses"
+        /* val PATH =
+             Environment.getExternalStorageDirectory().absolutePath + File.separator + "Download"
+         */
         val destdir =
             Environment.getExternalStorageDirectory().absolutePath + File.separator + Environment.DIRECTORY_DOWNLOADS + File.separator + "WhatsAppStatus"
         if (!File(destdir).exists()) {
@@ -50,7 +104,8 @@ class MainActivity : ComponentActivity() {
         }
 
         Log.e(TAG, "onCreate: " + PATH)
-        statusFiles = getFilesList(PATH)
+        statusFiles =
+            getFilesList(PATH)
         for (file in statusFiles)
             Log.e("TAG", "onCreate: " + file.name)
         setContent {
